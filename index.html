@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+ <meta charset="UTF-8">   <!--Türkçe harfleri düzgün yazsin diye kullaniliyormuş ğ falan için -->
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <!--https://www.w3schools.com/html/html_responsive.asp  bu kodu burdan buldum telefondada düzgün gözükebilsin diye -->
+ <!-- ctr ö -->
+  <!-- https://www.w3schools.com/ Kullandiğim çoğu kodu burdan buldum işe yarar bilgileri var -->
+
+ <title>Güvenli Yol Navigasyonu</title>                                     
+ 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!--Kütüphaneyi indirmeden gelmesini sağladimki tfde falanda açabilelim -->
+
+  <style>
+    /* https://blog.r10.net/ipucu/en-populer-ve-en-iyi-20-html-yazi-tipleri?ysclid=mv01ycr6rz666856484 */
+    /* https://www.w3schools.com/css/css_margin.asp margin ve padding burdan buldum ilk eklediğimde arada bir boşluk oldu vh*/
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: sans-serif; }
+    #map { height: 100%; width: 100%;  }
+    .msj {
+      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);/*https://www.w3schools.com/tools/tool_css_transform.php*/
+      background: white; padding: 12px 20px; border-radius: 25px; /*boreder-radisus köşeleri yuvarlağimsi yapti hoş durdu */
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2); z-index: 1000;    /*https://www.w3schools.com/css/css_z-index.asp  önde dursun diye*/
+      font-size: 15px; font-weight: bold; text-align: center;
+      /* Hatirlatma derste hoca # özel anlaminda . ise class anlaminda kullandirmişti o yüzden öyle düşündüm */
+    }
+
+    /* haritada dokunduğun  dükkanın bilgi kutucuğunun içinde yazan hedef belirle kısmı */
+    .btn-rota {
+      margin-top: 8px;
+      padding: 6px 12px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      width: 100%;
+    }
+    /* bunu ai önerdi burayi seçin üzerine mouse geldiğinde rengi koyulaşiyormuş güzel dursun diye */
+    .btn-rota:hover {
+      background: #0056b3;
+    }
+  </style> 
+</head>
+<body>
+
+  <div class="msj" id="msj">Konumunuz bulunuyor</div>
+
+  <div id="map"></div>
+
+  <script>
+    // Denizli forum çamlık - PAÜ odaklı harita açılışı
+    // https://leafletjs.com/  const map = new LeafletMap('map').setView([51.505, -0.09], 13); buranın bilgilerini değiştirdim
+    //  const map değişken 
+    const map = L.map('map').setView([37.7500, 29.0950], 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap France | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Yollar dükkan noktalarının altında kalsın, dükkanlara rahat tıklansın diye özel alt katman
+    map.createPane('yollarKatmani');
+    map.getPane('yollarKatmani').style.zIndex = 350;
+
+    let kulkonum = null;
+    let gidilecek = null;  
+    // let koymamın sebebi değerini değiştirebildiğim bir değişken olduğu için kod bunlarsiz önceki koyduğum işareti silmiyordu yer seçerken mesela
+
+    //Canlı Konum Alma
+    //https://htmldersleri.org/index.php?getir=html5_geolocation&ID=39 altaki kod html kendisinden bu sitenin yardimi ile aldim konumu
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition((pos) => {
+        const enlem = pos.coords.latitude;
+        const boylam = pos.coords.longitude;
+
+        if (!kulkonum) {
+          kulkonum = L.marker([enlem, boylam]).addTo(map).bindPopup("<b>Şu Anki Konumunuz</b>").openPopup();
+          map.setView([enlem, boylam], 15);
+          document.getElementById('msj').innerText = "Konumunuz bulundu! Haritadan gitmek istediğiniz yere dokunun.";
+        } else {
+          kulkonum.setLatLng([enlem, boylam]);
+        }
+        // error aldiğinda çikan
+      }, (err) => {
+        document.getElementById('msj').innerText = "Konumunuzu vermediniz, harita serbest modda.";
+      }, { enableHighAccuracy: true });
+    }
+
+    // Hedef seçildiğinde eskiyi silip yenisini koyan fonksiyon
+    function hedefBelirle(lat, lng, isim = "Hedef Noktası") {
+      if (gidilecek) map.removeLayer(gidilecek);
+      gidilecek = L.marker([lat, lng]).addTo(map).bindPopup(`<b>${isim}</b>`).openPopup();
+      document.getElementById('msj').innerText = `Hedef seçildi: ${isim}`;
+    }
+
+    //Haritaya Tıklayınca Hedef Koyma
+    map.on('click', function(e) {
+      hedefBelirle(e.latlng.lat, e.latlng.lng, `${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`);
+    });
+
+    // 'yollar.json' dosyasını okuyup haritaya çizgi olarak basan kısım
+    fetch('yollar.json')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Yollar dosyası okunamadı");
+        }
+        return response.json();
+      })
+      .then(yolListesi => {
+        yolListesi.forEach(yol => {
+          const anaCaddeMi = (yol.tur === "Ana Cadde");
+
+          // Ana cadde ise kalın ve turuncu/mavi, ara cadde ise ince ve gri çiz
+          const cizgi = L.polyline(yol.koordinatlar, {
+            pane: 'yollarKatmani', // Çizgileri dükkanların altında tutar
+            color: anaCaddeMi ? '#ff7800' : '#888888', // Ana cadde: Turuncu, Ara cadde: Gri
+            weight: anaCaddeMi ? 5 : 2,                 // Ana cadde daha kalın
+            opacity: anaCaddeMi ? 0.8 : 0.5
+          }).addTo(map);
+
+          // Caddeye tıklandığında adı ve türü çıksın
+          cizgi.bindPopup(`<b>${yol.isim}</b><br><span style="color:#666;">Tür: ${yol.tur}</span>`);
+        });
+      })
+      .catch(hata => {
+        console.error("Yollar yüklenirken hata:", hata);
+      });
+
+    // 'yerler.json' dosyasını okuyan kısım bu
+    // .then amacı sirasıyla yapması için burda aiden yardim aldim
+    fetch('yerler.json')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("JSON dosyası okunamadı: " + response.statusText);
+        }
+        return response.json();
+      })
+      .then(veriler => {
+        veriler.forEach(yer => {
+          
+          // O an açıksa yeşil kapalıysa kırmızı ---
+          // Varsayılan renk her zaman Kırmızıdır (Risk almamak için)
+          let renkKodu = '#dc3545'; 
+
+          // Cihazın o anki saatini al (Örn: 14:30 -> 14.5)
+          const suAn = new Date();
+          const suAnSaat = suAn.getHours() + (suAn.getMinutes() / 60);
+          // zaman değişkeni 
+
+          // --- HEM GERÇEK HEM DE TAHMİNİ SAATLERİ CANLI HESAPLAR ---
+          if (yer.acilis_saatleri && yer.acilis_saatleri !== "Belirtilmemiş") {
+            let saatMetni = yer.acilis_saatleri.toLowerCase();
+            
+            if (saatMetni.includes("24/7") || saatMetni.includes("24 saat") || saatMetni.includes("24 hours")) {
+              renkKodu = '#28a745'; // 24 saat açıksa kesin yeşil
+            } else {
+              // saatleri karşilaştirabileceğimiz bir hale çeviriyor
+              const saatSablonu = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/;
+              const eslesme = saatMetni.match(saatSablonu);
+
+              if (eslesme) {
+                let acilis = parseInt(eslesme[1], 10) + (parseInt(eslesme[2], 10) / 60);
+                let kapanis = parseInt(eslesme[3], 10) + (parseInt(eslesme[4], 10) / 60);
+                let suAnAcik = false;
+                
+                if (kapanis < acilis) { // Geceyi geçen mesai (Örn: 20:00 - 06:00)
+                  suAnAcik = (suAnSaat >= acilis || suAnSaat <= kapanis);
+                } else { // Normal mesai
+                  suAnAcik = (suAnSaat >= acilis && suAnSaat <= kapanis);
+                }
+
+                // açik mi kapali mi
+                // O an açıksa yeşil, kapalıysa kırmızı
+                renkKodu = suAnAcik ? '#28a745' : '#dc3545';
+              }
+            }
+          } 
+          // -----------------------------------------------------------
+
+          // Harita üzerindeki renkli daireyi bu çizer
+          const nokta = L.circleMarker([yer.lat, yer.lon], {
+            radius: 12,
+            color: '#ffffff', // Dış çizgi beyaz belirgin olsun diye
+            fillColor: renkKodu,
+            fillOpacity: 0.85,
+            weight: 2
+          }).addTo(map);
+
+          nokta.on('click', function(e) {
+            L.DomEvent.stopPropagation(e);
+          });
+
+          // Eğer telefon veya web sitesi varsa HTML koduna ekle, yoksa boş kalsın
+          let ekBilgiler = "";
+          if (yer.telefon) {
+            ekBilgiler += `<br><span style="color: #666;">Tel:</span> <a href="tel:${yer.telefon}" style="text-decoration: none; color: #007bff; font-weight: bold;">${yer.telefon}</a>`;
+          }
+          if (yer.websitesi) {
+            ekBilgiler += `<br><span style="color: #666;">Site:</span> <a href="${yer.websitesi}" target="_blank" style="text-decoration: none; color: #007bff; font-weight: bold;">Ziyaret Et</a>`;
+          }
+
+          // Yere tıklandığında açılan bilgi penceresi
+          const mekan = `
+            <div style="font-size: 13px; min-width: 170px;">
+              <strong style="font-size: 14px;">${yer.isim}</strong><br>
+              <span style="color: #666;">Kategori:</span> ${yer.kategori}<br>
+              <span style="color: #666;">Çalışma Saati:</span> ${yer.acilis_saatleri}<br>
+              <span style="color: #888; font-size: 11px;">Durum: ${yer.saat_durumu}</span>
+              ${ekBilgiler} <br>
+              <button class="btn-rota" onclick="hedefBelirle(${yer.lat}, ${yer.lon}, '${yer.isim.replace(/'/g, "\\'")}')">
+                Burayı Hedef Seç
+              </button>
+            </div>
+          `;
+          nokta.bindPopup(mekan);
+        });
+      })
+      .catch(hata => {
+        console.error("Veri yüklenirken hata oluştu:", hata);
+      });
+  </script>
+</body>
+</html>
