@@ -13,54 +13,67 @@
   <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
 
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: sans-serif; }
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     #map { height: 100%; width: 100%;  }
     
     .msj {
       position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-      background: white; padding: 12px 20px; border-radius: 25px; 
-      box-shadow: 0 5px 15px rgba(0,0,0,0.2); z-index: 1000;    
-      font-size: 15px; font-weight: bold; text-align: center;
+      background: white; padding: 12px 25px; border-radius: 30px; 
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15); z-index: 1000;    
+      font-size: 14px; font-weight: 600; text-align: center; color: #333;
     }
 
     .btn-rota {
-      margin-top: 8px; padding: 6px 12px; background: #007bff; color: white;
-      border: none; border-radius: 6px; cursor: pointer;
-      font-size: 12px; font-weight: bold; width: 100%;
+      margin-top: 8px; padding: 8px 12px; background: #007bff; color: white;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-size: 13px; font-weight: bold; width: 100%; transition: 0.2s;
     }
-    .btn-rota:hover { background: #0056b3; }
+    .btn-rota:hover { background: #0056b3; transform: scale(1.02); }
 
-    /* YENİ: Arama Çubuğu ve Sonuç Listesi Tasarımı */
+    /* YENİ ŞATAFATLI ARAMA ÇUBUĞU TASARIMI */
     .arama-kapsayici {
       position: absolute; top: 75px; left: 15px; z-index: 1000;
-      background: white; padding: 10px; border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3); width: 260px;
+      background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 280px;
+      backdrop-filter: blur(5px);
     }
     #arama-input {
-      width: 100%; padding: 8px; box-sizing: border-box; 
-      border-radius: 4px; border: 1px solid #ccc; outline: none;
+      width: 100%; padding: 12px 15px; box-sizing: border-box; 
+      border-radius: 25px; border: 2px solid #e0e0e0; outline: none;
+      font-size: 14px; font-family: inherit; transition: all 0.3s ease;
+      background-color: #f8f9fa; color: #333;
+    }
+    #arama-input:focus {
+      border-color: #007bff; background-color: #fff;
+      box-shadow: 0 0 8px rgba(0,123,255,0.3);
     }
     #arama-sonuclari {
-      list-style: none; padding: 0; margin: 0; 
-      max-height: 200px; overflow-y: auto; background: white;
+      list-style: none; padding: 0; margin: 10px 0 0 0; 
+      max-height: 220px; overflow-y: auto; background: transparent;
     }
     #arama-sonuclari li {
-      padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px;
+      padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px;
+      border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
+      transition: background-color 0.2s;
     }
-    #arama-sonuclari li:hover { background: #f0f0f0; color: #007bff; font-weight: bold;}
+    #arama-sonuclari li:last-child { border-bottom: none; }
+    #arama-sonuclari li:hover { background: #e9ecef; color: #007bff; font-weight: 600;}
+    .zaman-etiketi {
+      font-size: 11px; background: #28a745; color: white; 
+      padding: 3px 6px; border-radius: 10px; font-weight: bold;
+    }
     #mesafe-bilgisi {
-      margin-top: 10px; font-size: 14px; font-weight: bold; color: #d9534f; display: none;
+      margin-top: 12px; font-size: 14px; font-weight: bold; color: #007bff; 
+      display: none; text-align: center; padding-top: 10px; border-top: 1px dashed #ccc;
     }
     
-    /* Routing Machine'in varsayılan yol tarifi kutusunu gizliyoruz (sadece çizgi istendiği için) */
     .leaflet-routing-container { display: none !important; }
   </style> 
 </head>
 <body>
 
-  <!-- YENİ: Arama Çubuğu HTML -->
   <div class="arama-kapsayici">
-    <input type="text" id="arama-input" placeholder="İş yeri ara (Örn: A101)..." autocomplete="off">
+    <input type="text" id="arama-input" placeholder="İş yeri ara (Örn: Paribu)..." autocomplete="off">
     <ul id="arama-sonuclari"></ul>
     <div id="mesafe-bilgisi"></div>
   </div>
@@ -69,7 +82,11 @@
   <div id="map"></div>
 
   <script>
-    const map = L.map('map').setView([37.7500, 29.0950], 14);
+    // Zoom kontrollerini varsayılan olarak kapattık (zoomControl: false)
+    const map = L.map('map', { zoomControl: false }).setView([37.7500, 29.0950], 14);
+
+    // Zoom kontrolünü sağ alta ekliyoruz
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -81,75 +98,74 @@
 
     let kulkonum = null;
     let gidilecek = null;  
-    
-    // YENİ: Rota ve Arama için gerekli küresel değişkenler
     let rotaKontrol = null; 
-    let yerlerListesi = []; // JSON'dan gelen işyerlerini burada tutup arama yapacağız
+    let yerlerListesi = []; 
+    let guncelEnlem = null;
+    let guncelBoylam = null;
 
-    // Canlı Konum Alma
+    // Kuş uçuşu mesafeyi hesaplamak için Haversine Formülü
+    function mesafeHesapla(lat1, lon1, lat2, lon2) {
+      if(!lat1 || !lon1 || !lat2 || !lon2) return 9999;
+      const R = 6371; // Dünya yarıçapı (km)
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c; // KM cinsinden sonuç
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition((pos) => {
-        const enlem = pos.coords.latitude;
-        const boylam = pos.coords.longitude;
+        guncelEnlem = pos.coords.latitude;
+        guncelBoylam = pos.coords.longitude;
 
         if (!kulkonum) {
-          kulkonum = L.marker([enlem, boylam]).addTo(map).bindPopup("<b>Şu Anki Konumunuz</b>").openPopup();
-          map.setView([enlem, boylam], 15);
-          document.getElementById('msj').innerText = "Konumunuz bulundu! Arama yapın veya haritaya dokunun.";
+          kulkonum = L.marker([guncelEnlem, guncelBoylam]).addTo(map).bindPopup("<b>Şu Anki Konumunuz</b>").openPopup();
+          map.setView([guncelEnlem, guncelBoylam], 15);
+          document.getElementById('msj').innerText = "Konum bulundu! Arama yapın veya haritaya dokunun.";
         } else {
-          kulkonum.setLatLng([enlem, boylam]);
+          kulkonum.setLatLng([guncelEnlem, guncelBoylam]);
         }
       }, (err) => {
         document.getElementById('msj').innerText = "Konumunuzu vermediniz, harita serbest modda.";
       }, { enableHighAccuracy: true });
     }
 
-    // GÜNCELLENDİ: Hedef seçildiğinde rotayı çizen fonksiyon
     function hedefBelirle(lat, lng, isim = "Hedef Noktası") {
       if (gidilecek) map.removeLayer(gidilecek);
       gidilecek = L.marker([lat, lng]).addTo(map).bindPopup(`<b>${isim}</b>`).openPopup();
-      document.getElementById('msj').innerText = `Hedef seçildi: ${isim}`;
+      document.getElementById('msj').innerText = `Hedef: ${isim}`;
 
       if (kulkonum) {
         let baslangic = kulkonum.getLatLng();
 
-        // Eğer haritada önceden çizilmiş bir rota varsa temizle
-        if (rotaKontrol) {
-          map.removeControl(rotaKontrol);
-        }
+        if (rotaKontrol) map.removeControl(rotaKontrol);
 
-        // Yeni rotayı çiz (OSRM üzerinden ücretsiz)
         rotaKontrol = L.Routing.control({
-          waypoints: [
-            L.latLng(baslangic.lat, baslangic.lng),
-            L.latLng(lat, lng)
-          ],
-          routeWhileDragging: false,
-          addWaypoints: false,
-          show: false, // Yandaki karmaşık yol tarifi metinlerini gizler
-          lineOptions: {
-            styles: [{color: '#007bff', opacity: 0.8, weight: 5}] // Mavi çizgi
-          }
+          waypoints: [ L.latLng(baslangic.lat, baslangic.lng), L.latLng(lat, lng) ],
+          routeWhileDragging: false, addWaypoints: false, show: false,
+          lineOptions: { styles: [{color: '#007bff', opacity: 0.8, weight: 6}] }
         }).addTo(map);
 
-        // Rota bulunduğunda mesafeyi hesaplayıp arama kutusunun altına yazdırır
         rotaKontrol.on('routesfound', function(e) {
-          let mesafeKm = (e.routes[0].summary.totalDistance / 1000).toFixed(2);
+          let rota = e.routes[0].summary;
+          let mesafeKm = (rota.totalDistance / 1000).toFixed(2);
+          let sureDk = Math.round(rota.totalTime / 60); // Saniyeyi dakikaya çevir
+          
           let mesafeKutusu = document.getElementById('mesafe-bilgisi');
           mesafeKutusu.style.display = "block";
-          mesafeKutusu.innerHTML = `📍 Uzaklık: ${mesafeKm} km`;
+          mesafeKutusu.innerHTML = `📍 Uzaklık: <b>${mesafeKm} km</b> <br> 🚶‍♂️ Yürüme: <b>~${sureDk} dk</b>`;
         });
-      } else {
-        alert("Konumunuz henüz bulunamadı, rota çizilemiyor. Lütfen GPS izni verin.");
       }
     }
 
-    // Haritaya Tıklayınca Hedef Koyma
     map.on('click', function(e) {
       hedefBelirle(e.latlng.lat, e.latlng.lng, `Seçilen Nokta`);
     });
 
-    // Yolları Çizme
     fetch('yollar.json')
       .then(response => response.json())
       .then(yolListesi => {
@@ -163,13 +179,12 @@
           }).addTo(map);
           cizgi.bindPopup(`<b>${yol.isim}</b><br><span style="color:#666;">Tür: ${yol.tur}</span>`);
         });
-      }).catch(hata => console.error("Yollar yüklenirken hata:", hata));
+      }).catch(e => console.log(e));
 
-    // Yerleri (Dükkanları) Okuma
     fetch('yerler.json')
       .then(response => response.json())
       .then(veriler => {
-        yerlerListesi = veriler; // YENİ: Arama çubuğunda kullanmak için listeyi saklıyoruz
+        yerlerListesi = veriler; 
 
         veriler.forEach(yer => {
           let renkKodu = '#dc3545'; 
@@ -178,18 +193,15 @@
 
           if (yer.acilis_saatleri && yer.acilis_saatleri !== "Belirtilmemiş") {
             let saatMetni = yer.acilis_saatleri.toLowerCase();
-            if (saatMetni.includes("24/7") || saatMetni.includes("24 saat") || saatMetni.includes("24 hours")) {
+            if (saatMetni.includes("24/7") || saatMetni.includes("24 saat")) {
               renkKodu = '#28a745';
             } else {
               const saatSablonu = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/;
-              const eslesme = saatMetni.match(saatSablonu);
-              if (eslesme) {
-                let acilis = parseInt(eslesme[1], 10) + (parseInt(eslesme[2], 10) / 60);
-                let kapanis = parseInt(eslesme[3], 10) + (parseInt(eslesme[4], 10) / 60);
-                let suAnAcik = false;
-                
-                if (kapanis < acilis) { suAnAcik = (suAnSaat >= acilis || suAnSaat <= kapanis); } 
-                else { suAnAcik = (suAnSaat >= acilis && suAnSaat <= kapanis); }
+              const es = saatMetni.match(saatSablonu);
+              if (es) {
+                let acilis = parseInt(es[1], 10) + (parseInt(es[2], 10) / 60);
+                let kapanis = parseInt(es[3], 10) + (parseInt(es[4], 10) / 60);
+                let suAnAcik = (kapanis < acilis) ? (suAnSaat >= acilis || suAnSaat <= kapanis) : (suAnSaat >= acilis && suAnSaat <= kapanis);
                 renkKodu = suAnAcik ? '#28a745' : '#dc3545';
               }
             }
@@ -198,52 +210,62 @@
           const nokta = L.circleMarker([yer.lat, yer.lon], {
             radius: 12, color: '#ffffff', fillColor: renkKodu, fillOpacity: 0.85, weight: 2
           }).addTo(map);
-
           nokta.on('click', function(e) { L.DomEvent.stopPropagation(e); });
 
           let ekBilgiler = "";
           if (yer.telefon) ekBilgiler += `<br><span style="color: #666;">Tel:</span> <a href="tel:${yer.telefon}">${yer.telefon}</a>`;
-          if (yer.websitesi) ekBilgiler += `<br><span style="color: #666;">Site:</span> <a href="${yer.websitesi}" target="_blank">Ziyaret Et</a>`;
-
-          const mekan = `
+          
+          nokta.bindPopup(`
             <div style="font-size: 13px; min-width: 170px;">
               <strong style="font-size: 14px;">${yer.isim}</strong><br>
               <span style="color: #666;">Kategori:</span> ${yer.kategori}<br>
-              <span style="color: #666;">Çalışma Saati:</span> ${yer.acilis_saatleri}<br>
+              <span style="color: #666;">Saat:</span> ${yer.acilis_saatleri}<br>
               ${ekBilgiler} <br>
-              <button class="btn-rota" onclick="hedefBelirle(${yer.lat}, ${yer.lon}, '${yer.isim.replace(/'/g, "\\'")}')">
-                Burayı Hedef Seç
-              </button>
+              <button class="btn-rota" onclick="hedefBelirle(${yer.lat}, ${yer.lon}, '${yer.isim.replace(/'/g, "\\'")}')">Burayı Hedef Seç</button>
             </div>
-          `;
-          nokta.bindPopup(mekan);
+          `);
         });
-      }).catch(hata => console.error("Veri yüklenirken hata oluştu:", hata));
+      }).catch(e => console.log(e));
 
-    // YENİ: Arama Çubuğu Algoritması
     const aramaInput = document.getElementById('arama-input');
     const aramaSonuclari = document.getElementById('arama-sonuclari');
 
     aramaInput.addEventListener('input', function() {
       const aranan = this.value.toLowerCase();
-      aramaSonuclari.innerHTML = ''; // Eski listeyi temizle
+      aramaSonuclari.innerHTML = ''; 
 
-      if (aranan.length < 1) return;
+      if (aranan.length < 1) {
+        document.getElementById('mesafe-bilgisi').style.display = "none";
+        return;
+      }
 
-      // İsmi girilen harfleri içeren yerleri json listesinden bul
-      const bulunanlar = yerlerListesi.filter(yer => yer.isim.toLowerCase().includes(aranan));
+      // Kelimeyi içerenleri filtrele
+      let bulunanlar = yerlerListesi.filter(yer => yer.isim.toLowerCase().includes(aranan));
 
-      bulunanlar.forEach(yer => {
+      // Konum biliniyorsa mesafeye göre sırala (Yakından uzağa)
+      if(guncelEnlem && guncelBoylam) {
+        bulunanlar.forEach(yer => {
+          yer.uzaklikHesap = mesafeHesapla(guncelEnlem, guncelBoylam, yer.lat, yer.lon);
+        });
+        bulunanlar.sort((a, b) => a.uzaklikHesap - b.uzaklikHesap);
+      }
+
+      bulunanlar.slice(0, 15).forEach(yer => { // Sadece en yakın 15 sonucu göster
         const li = document.createElement('li');
-        li.innerText = `${yer.isim} - ${yer.kategori}`;
         
-        // Listeden bir yere tıklanınca ne olacak?
+        let dakikaMetni = "";
+        if(yer.uzaklikHesap) {
+          let tahminiDk = Math.max(1, Math.round((yer.uzaklikHesap / 5) * 60)); // 5 km/s yürüme hızına göre
+          dakikaMetni = `<span class="zaman-etiketi">${tahminiDk} dk</span>`;
+        }
+
+        li.innerHTML = `<span>${yer.isim}</span> ${dakikaMetni}`;
+        
         li.onclick = function() {
-          aramaInput.value = yer.isim; // Tıklananı arama kutusuna yaz
-          aramaSonuclari.innerHTML = ''; // Listeyi kapat
-          
-          hedefBelirle(yer.lat, yer.lon, yer.isim); // Orayı hedef yap ve rota çiz
-          map.setView([yer.lat, yer.lon], 16); // Haritayı oraya yaklaştır
+          aramaInput.value = yer.isim; 
+          aramaSonuclari.innerHTML = ''; 
+          hedefBelirle(yer.lat, yer.lon, yer.isim); 
+          map.setView([yer.lat, yer.lon], 16); 
         };
         aramaSonuclari.appendChild(li);
       });
